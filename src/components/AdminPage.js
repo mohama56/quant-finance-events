@@ -1,6 +1,7 @@
 // src/components/AdminPage.js
 import React, { useState, useEffect } from 'react';
-import { getRegistrations, exportToCSV } from '../api';
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { db } from '../firebase';
 
 function AdminPage() {
     const [registrations, setRegistrations] = useState([]);
@@ -10,7 +11,17 @@ function AdminPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const data = await getRegistrations();
+                const q = query(collection(db, "registrations"), orderBy("timestamp", "desc"));
+                const querySnapshot = await getDocs(q);
+
+                const data = [];
+                querySnapshot.forEach((doc) => {
+                    data.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+
                 setRegistrations(data);
                 setIsLoading(false);
             } catch (err) {
@@ -23,11 +34,76 @@ function AdminPage() {
 
     const handleExportCSV = async () => {
         try {
-            await exportToCSV();
+            if (registrations.length === 0) {
+                throw new Error("No registrations to export");
+            }
+
+            // Get headers from first registration
+            const headers = [
+                'First Name',
+                'Last Name',
+                'Email',
+                'Affiliation',
+                'NetID',
+                'Graduation Year',
+                'Program',
+                'Attendance',
+                'Questions',
+                'Timestamp'
+            ];
+
+            // Convert data to CSV rows
+            const csvRows = [];
+            csvRows.push(headers.join(','));
+
+            registrations.forEach(reg => {
+                const row = [
+                    csvEscape(reg.firstName),
+                    csvEscape(reg.lastName),
+                    csvEscape(reg.email),
+                    csvEscape(reg.affiliationType),
+                    csvEscape(reg.netId || ''),
+                    csvEscape(reg.graduationYear || ''),
+                    csvEscape(reg.program || ''),
+                    csvEscape(reg.attendance || ''),
+                    csvEscape(reg.questions || ''),
+                    csvEscape(reg.timestamp)
+                ];
+                csvRows.push(row.join(','));
+            });
+
+            // Create a CSV file and download it
+            const csvContent = csvRows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'registrations.csv');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         } catch (err) {
             setError(err.message);
         }
     };
+
+    // Helper function to escape CSV values
+    function csvEscape(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        value = String(value);
+
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+            value = value.replace(/"/g, '""');
+            return `"${value}"`;
+        }
+
+        return value;
+    }
 
     if (isLoading) return <div className="text-center p-8">Loading...</div>;
     if (error) return <div className="text-red-500 p-8">Error: {error}</div>;
