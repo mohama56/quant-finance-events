@@ -33,4 +33,5 @@ backend/data/*.xls
 *.avi
 *.flv
 *.mov
-*.wmv
+*.wmv/backend/node_modules
+.idea
